@@ -1,0 +1,135 @@
+---
+title: "CourseraMachineLearningProject"
+author: "AD"
+date: "December 1, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## Goal
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Basic Exploratory Data Analysis
+### Load Packages
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(doParallel)
+```
+
+### Getting and Clean the data
+```{r}
+traindata <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings = c("NA","#DIV/0!",""))
+
+testdata <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings = c("NA","#DIV/0!",""))
+
+
+dim(traindata)
+dim(testdata)
+
+traindata <- traindata[,colSums(is.na(traindata)) == 0]
+dim(traindata)
+summary(traindata)
+testdata <- testdata[,colSums(is.na(testdata)) == 0]
+dim(testdata)
+```
+
+Exclude the columns that are not part of the prediction process
+```{r}
+traindata <- traindata[,-c(1:7)]
+testdata <- testdata[,-c(1:7)]
+dim(traindata)
+```
+
+## Data Slicing
+Split the training data set into 70% of training data set and 30% testing data set
+```{r}
+itrain <- createDataPartition(traindata$classe, p =0.7, list = FALSE)
+itraindata <- traindata[itrain,]
+itest <- traindata[-itrain,]
+dim(itraindata)
+dim(itest)
+```
+
+## k-fold Cross Validation 
+Split the data into 5 subsets
+```{r}
+registerDoParallel(cores=5)
+tcontrol <- trainControl(method = "cv", number = 5)
+```
+
+## Classification Tree Model
+Build the Classification Tree Model. Predict and note the Accuracy and out of sample error for the Classification Tree Model.
+```{r}
+ctreemod <- train(classe ~ .,data = itraindata, method = "rpart", trControl=tcontrol)
+fancyRpartPlot(ctreemod$finalModel)
+
+predict_ctree <- predict(ctreemod, itest, type = "raw")
+confusionMatrix(predict_ctree,itest$classe)
+```
+
+Out of Sample Error
+```{r}
+dterror <- 1 - as.numeric(confusionMatrix(predict_ctree,itest$classe)$overall[1])
+dterror
+```
+Accuracy
+```{r}
+ctreecmat <- confusionMatrix(predict_ctree,itest$classe)
+plot(ctreecmat$table,col = ctreecmat$byClass, color = ctreecmat$table,main = paste("Accuracy is",round(ctreecmat$overall['Accuracy'],4)))
+
+```
+
+## Random Forest Model
+Build the Random Forest Model. Predict and note the Accuracy and out of sample error for the Random Forest Model.
+```{r}
+rforestmod <- train(classe ~ .,data = itraindata,method =  "rf",trControl=tcontrol)
+
+predict_rforest <- predict(rforestmod, itest, type = "raw")
+confusionMatrix(predict_rforest,itest$classe)
+```
+
+Out of Sample Error
+```{r}
+rferror <- 1 - as.numeric(confusionMatrix(predict_rforest,itest$classe)$overall[1])
+rferror
+```
+Accuracy
+```{r}
+rforestcmat <- confusionMatrix(predict_rforest,itest$classe)
+
+plot(rforestcmat$table,col = rforestcmat$byClass, color = rforestcmat$table, main = paste("Accuracy is",round(rforestcmat$overall['Accuracy'],4)))
+```
+
+## Predict Based on the Testing Data
+Accuracy for Random Forest model is 99%, hence this model will be used to predict the test data set i.e. 20 test cases.
+```{r}
+predict_rfdata <- predict(rforestmod,testdata)
+predict_rfdata
+```
+
+## Conclusion
+The training data was divided into two sets, training and validation sets. 
+K-fold Cross Validation with Random Forest Model provides 99% accuracy and 0.6% out of sample error rate.
+K-fold Cross Validation with Classification Tree Model provides 49% accuracy and 50% out of sample error rate.
+Finally, Random Forest model is used to predict the Testing data set provided in pml-testing.csv i.e. 20 test cases.
